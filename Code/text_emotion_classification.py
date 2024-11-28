@@ -4,15 +4,17 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
 import pandas as pd
 from tqdm import tqdm
 import numpy as np
-
+import json
+import os
 
 class TextEmotionDataset(Dataset):
-    def __init__(self, texts, labels, tokenizer, max_length=128):
+    def __init__(self, texts, labels, tokenizer, label_encoder, max_length=128):
         self.texts = texts
-        self.labels = labels
+        self.labels = label_encoder.transform(labels)
         self.tokenizer = tokenizer
         self.max_length = max_length
 
@@ -100,20 +102,36 @@ def main():
 
     # Load your data
     # Example: dataset could be a CSV with 'text' and 'emotion' columns
-    df = pd.read_csv('your_emotion_dataset.csv')
-    texts = df['text'].tolist()
-    labels = df['emotion'].tolist()
+    df = pd.read_csv('MELD_dev_sent_emo.csv')
+    texts = df['Utterance'].tolist()
+    labels = df['Emotion'].tolist()
 
-    # Get number of unique emotions
-    num_labels = len(set(labels))
+    # Initialize label encoder
+    label_encoder = LabelEncoder()
+    label_encoder.fit(labels)
+
+    # Save label encoder classes for later use
+    label_mapping = {
+        'classes': label_encoder.classes_.tolist(),
+        'num_labels': len(label_encoder.classes_)
+    }
+
+
+
+    os.makedirs("./emotion_bert_finetuned", exist_ok=True)
+    with open("./emotion_bert_finetuned/label_mapping.json", 'w') as f:
+        json.dump(label_mapping, f)
+
+    print(f"Emotion classes: {label_mapping['classes']}")
 
     # Initialize tokenizer and model
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
     model = AutoModelForSequenceClassification.from_pretrained(
         "bert-base-uncased",
-        num_labels=num_labels
+        num_labels=label_mapping['num_labels']
     )
     model.to(device)
+
 
     # Split data
     train_texts, val_texts, train_labels, val_labels = train_test_split(
@@ -121,8 +139,8 @@ def main():
     )
 
     # Create datasets
-    train_dataset = TextEmotionDataset(train_texts, train_labels, tokenizer)
-    val_dataset = TextEmotionDataset(val_texts, val_labels, tokenizer)
+    train_dataset = TextEmotionDataset(train_texts, train_labels, tokenizer, label_encoder)
+    val_dataset = TextEmotionDataset(val_texts, val_labels, tokenizer, label_encoder)
 
     # Create dataloaders
     train_loader = DataLoader(
