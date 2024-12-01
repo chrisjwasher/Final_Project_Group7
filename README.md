@@ -4,9 +4,9 @@ DATS6303 Deep Learning Group 7 Final Project for Speech Emotion Recognition
 To do (Dec 1)
 
 Finish SER models
--	  CNN, LSTM, ViT?
--	  Evaluate and compare performance
--	  Graphic for final presentation
+-   CNN, LSTM, ViT?
+-   Evaluate and compare performance
+-   Graphic for final presentation
 
 Finalize multimodal model to incorporate pretrained text classification
 -   Incorporate additional datasets and align emotions to SER
