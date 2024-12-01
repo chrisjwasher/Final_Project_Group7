@@ -1,7 +1,8 @@
 # Final_Project_Group7
 DATS6303 Deep Learning Group 7 Final Project for Speech Emotion Recognition
 
-To do (Dec 1):
+To do (Dec 1)
+
 Finish SER models
 -	  CNN, LSTM, ViT?
 -	  Evaluate and compare performance
