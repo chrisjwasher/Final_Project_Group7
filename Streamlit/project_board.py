@@ -200,7 +200,7 @@ data=pd.concat([emotions_data_df,level_df,file_df], axis=1)
 
 
 # =========================================================================================================
-#                                   EDA
+#                                   Demostration
 # =========================================================================================================
 # st.sidebar.title('Choose Sector')
 # page=st.sidebar.radio(['','Data Visualization', 'Prediction'])
