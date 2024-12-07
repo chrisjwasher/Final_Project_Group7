@@ -196,7 +196,6 @@ emotions_data_df = pd.DataFrame(emotions_data, columns=['Emotions'])
 file_df = pd.DataFrame(data_dir_list, columns=['Files'])
 level_df = pd.DataFrame(level_data, columns=['Emotion_Level'])
 data=pd.concat([emotions_data_df,level_df,file_df], axis=1)
-print(data)
 
 
 
@@ -346,6 +345,4 @@ elif page == '📈Model':
 
     #warnings.filterwarnings("ignore")
 
-    #model = joblib.load('xgb.joblib')
 
-    #final_data = pd.read_csv('final_data.csv')
