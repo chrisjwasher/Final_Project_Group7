@@ -393,7 +393,7 @@ elif page == '📈Model':
 
     # Simulate the LabelEncoder used during training
     label_classes = ["sad", "angry", "disgust", "fear", "neutral",
-                     "unknown"]  # Replace with actual class names
+                     "happy"]  # Replace with actual class names
     label_encoder = LabelEncoder()
     label_encoder.fit(label_classes)
 
