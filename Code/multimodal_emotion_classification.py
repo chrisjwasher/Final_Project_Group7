@@ -1,25 +1,29 @@
 import torch
 import torch.nn as nn
 import torchaudio
-from transformers import (Wav2Vec2ForCTC, AutoTokenizer, AutoModel,
-                          Wav2Vec2FeatureExtractor, AutoModelForAudioClassification)
+from transformers import (Wav2Vec2Model, AutoTokenizer, AutoModel,
+                          Wav2Vec2ForCTC, Wav2Vec2Processor, HubertModel)
 from torch.utils.data import Dataset, DataLoader
 import json
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
 
 
 class AudioTextEmotionDataset(Dataset):
-    def __init__(self, audio_paths, labels, bert_tokenizer_path, label_mapping_path):
+    def __init__(self, audio_paths, labels, bert_tokenizer_path, label_mapping_path, max_text_length=128):
         self.audio_paths = audio_paths
         self.labels = labels
+        self.max_text_length = max_text_length
+
 
         # Load label mapping
         with open(label_mapping_path, 'r') as f:
             self.label_mapping = json.load(f)
 
         # Initialize processors and tokenizers
-        self.asr_processor = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-base")
-        self.ser_processor = Wav2Vec2FeatureExtractor.from_pretrained(ser_path) #NEED SER MODEL
+        self.asr_processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base")
         self.text_tokenizer = AutoTokenizer.from_pretrained(bert_tokenizer_path)
 
     def __len__(self):
@@ -29,62 +33,65 @@ class AudioTextEmotionDataset(Dataset):
         # Load and preprocess audio
         waveform, sample_rate = torchaudio.load(self.audio_paths[idx])
 
+        if waveform.size(0) > 1:
+            waveform = torch.mean(waveform, dim=0, keepdim=True)
+
         # Resample if necessary
         if sample_rate != 16000:
             resampler = torchaudio.transforms.Resample(sample_rate, 16000)
             waveform = resampler(waveform)
 
-        # Process audio for ASR
-        asr_features = self.asr_processor(waveform, sampling_rate=16000).input_values
-
-        # Process audio for SER
-        ser_features = self.ser_processor(
+        waveform = waveform.numpy()  # Convert to 1D numpy array if needed
+        asr_features = self.asr_processor(
             waveform,
             sampling_rate=16000,
-            return_tensors="pt"
-        ).input_values
+            return_tensors="pt",
+        )
 
         # Get transcription
         with torch.no_grad():
-            logits = self.asr_processor(asr_features).logits
+            logits = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-base")(asr_features["input_values"]).logits
             predicted_ids = torch.argmax(logits, dim=-1)
-            transcription = self.asr_processor.decode(predicted_ids[0])
-
+            transcription_list = self.asr_processor.batch_decode(predicted_ids)
+            transcription = transcription_list[0]
+        #print("Transcription:", transcription, type(transcription))
         # Process text
         text_encoding = self.text_tokenizer(
             transcription,
             padding="max_length",
-            max_length=128,
             truncation=True,
-            return_tensors="pt"
+            max_length=self.max_text_length,
+            return_tensors="pt",
         )
 
+        # Squeeze the batch dimension to get a 1D tensor: [max_length]
+        text_ids = text_encoding["input_ids"].squeeze(0)
+        text_mask = text_encoding["attention_mask"].squeeze(0)
+
         return {
-            'asr_features': torch.tensor(asr_features),
-            'ser_features': ser_features.squeeze(),
-            'ser_attention_mask': ser_features.attention_mask.squeeze(),
-            'text_ids': text_encoding['input_ids'].squeeze(),
-            'text_mask': text_encoding['attention_mask'].squeeze(),
-            'label': torch.tensor(self.labels[idx])
+            "asr_features": asr_features["input_values"],
+            "text_ids": text_ids,  # [max_length]
+            "text_mask": text_mask,  # [max_length]
+            "label": torch.tensor(self.labels[idx]),
         }
 
 
 class MultimodalEmotionClassifier(nn.Module):
-    def __init__(self, num_emotions, bert_path, ser_path):
+    def __init__(self, num_emotions, bert_path):
         super().__init__()
 
         # Load models
         # Speech-to-text
-        self.asr_encoder = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-base")
+        self.asr_encoder = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base")
 
         # SER
-        self.ser_encoder = AutoModelForAudioClassification.from_pretrained(ser_path)
+        self.ser_encoder = HubertModel.from_pretrained("facebook/hubert-large-ls960-ft")
 
         # Text classification
         self.text_encoder = AutoModel.from_pretrained(bert_path)
 
         # Get dimensions
-        self.ser_dim = self.ser_encoder.classifier.in_features
+        self.ser_dim = self.ser_encoder.config.hidden_size
         self.bert_dim = self.text_encoder.config.hidden_size
 
         # Fusion and classification layers
@@ -109,23 +116,21 @@ class MultimodalEmotionClassifier(nn.Module):
         )
 
         # Freeze pretrained models
-        for model in [self.asr_encoder, self.ser_encoder]:
+        for model in [self.asr_encoder, self.ser_encoder, self.text_encoder]:
             for param in model.parameters():
                 param.requires_grad = False
 
 
-    def forward(self, asr_features, ser_features, text_ids, text_mask):
+    def forward(self, asr_features, text_ids, text_mask):
         # Process ASR features
         asr_output = self.asr_encoder(asr_features).last_hidden_state
         asr_pooled = asr_output.mean(dim=1)
         asr_projected = self.asr_projection(asr_pooled)
 
-        # Process SER features with attention mask
-        ser_output = self.ser_encoder(
-            input_values=ser_features,
-            attention_mask=ser_attention_mask
-        ).logits
-        ser_projected = self.ser_projection(ser_output)
+        # Process SER features
+        ser_output = self.ser_encoder(asr_features).last_hidden_state
+        ser_pooled = ser_output.mean(dim=1)
+        ser_projected = self.ser_projection(ser_pooled)
 
         # Process text with fine-tuned BERT
         text_output = self.text_encoder(text_ids, attention_mask=text_mask).last_hidden_state
@@ -150,23 +155,26 @@ def train_model(model, train_loader, val_loader, num_epochs, device):
     criterion = nn.CrossEntropyLoss()
 
     best_val_loss = float('inf')
+    train_accuracies = []
+    val_accuracies = []
 
     for epoch in range(num_epochs):
         # Training
         model.train()
         train_loss = 0
+        correct_train = 0
+        total_train = 0
 
         for batch in train_loader:
             optimizer.zero_grad()
 
             # Move all batch elements to device
             asr_features = batch['asr_features'].to(device)
-            ser_features = batch['ser_features'].to(device)
             text_ids = batch['text_ids'].to(device)
             text_mask = batch['text_mask'].to(device)
             labels = batch['label'].to(device)
 
-            outputs = model(asr_features, ser_features, text_ids, text_mask)
+            outputs = model(asr_features, text_ids, text_mask)
             loss = criterion(outputs, labels)
 
             loss.backward()
@@ -174,70 +182,160 @@ def train_model(model, train_loader, val_loader, num_epochs, device):
             optimizer.step()
 
             train_loss += loss.item()
+            _, predicted = outputs.max(1)
+            total_train += labels.size(0)
+            correct_train += predicted.eq(labels).sum().item()
+
+        train_accuracy = 100.0 * correct_train / total_train
+        train_accuracies.append(train_accuracy)
 
         # Validation
         model.eval()
         val_loss = 0
-        correct = 0
-        total = 0
+        correct_val = 0
+        total_val = 0
 
         with torch.no_grad():
             for batch in val_loader:
                 asr_features = batch['asr_features'].to(device)
-                ser_features = batch['ser_features'].to(device)
                 text_ids = batch['text_ids'].to(device)
                 text_mask = batch['text_mask'].to(device)
                 labels = batch['label'].to(device)
 
-                outputs = model(asr_features, ser_features, text_ids, text_mask)
+                outputs = model(asr_features, text_ids, text_mask)
                 loss = criterion(outputs, labels)
 
                 val_loss += loss.item()
                 _, predicted = outputs.max(1)
-                total += labels.size(0)
-                correct += predicted.eq(labels).sum().item()
+                total_val += labels.size(0)
+                correct_val += predicted.eq(labels).sum().item()
+
+            val_accuracy = 100.0 * correct_val / total_val
+            val_accuracies.append(val_accuracy)
+
 
         # Print metrics
-        print(f'Epoch {epoch + 1}/{num_epochs}:')
-        print(f'Training Loss: {train_loss / len(train_loader):.4f}')
-        print(f'Validation Loss: {val_loss / len(val_loader):.4f}')
-        print(f'Validation Accuracy: {100. * correct / total:.2f}%')
+        print(f"Epoch {epoch + 1}/{num_epochs}:")
+        print(f"Training Loss: {train_loss / len(train_loader):.4f}")
+        print(f"Training Accuracy: {train_accuracy:.2f}%")
+        print(f"Validation Loss: {val_loss / len(val_loader):.4f}")
+        print(f"Validation Accuracy: {val_accuracy:.2f}%")
 
         # Save best model
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(model.state_dict(), 'best_multimodal_model.pth')
 
+    plt.figure(figsize=(10, 6))
+    plt.plot(range(1, num_epochs + 1), train_accuracies, label="Training Accuracy")
+    plt.plot(range(1, num_epochs + 1), val_accuracies, label="Validation Accuracy")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy (%)")
+    plt.title("Training and Validation Accuracy Over Epochs")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+def load_data(audio_df, label_mapping_path, bert_token_path):
+
+    emotions = sorted(audio_df['Emotion'].unique())
+    emotion_to_idx = {emotion: idx for idx, emotion in enumerate(emotions)}
+
+    with open(label_mapping_path, "w") as f:
+        json.dump({"classes": emotions}, f)
+
+    audio_df['Label'] = audio_df['Emotion'].map(emotion_to_idx)
+
+    train_df, val_df = train_test_split(audio_df, test_size=0.2, random_state=42)
+
+    train_dataset = AudioTextEmotionDataset(
+        audio_paths=train_df["Path"].tolist(),
+        labels=train_df["Label"].tolist(),
+        bert_tokenizer_path=bert_token_path,
+        label_mapping_path=label_mapping_path,
+        max_text_length=128
+    )
+
+    val_dataset = AudioTextEmotionDataset(
+        audio_paths=val_df["Path"].tolist(),
+        labels=val_df["Label"].tolist(),
+        bert_tokenizer_path=bert_token_path,
+        label_mapping_path=label_mapping_path,
+        max_text_length=128
+    )
+
+    return train_dataset, val_dataset
+
+
+def collate_fn(batch):
+    asr_features = [item["asr_features"] for item in batch]  # Each is [1, length]
+    text_ids = [item["text_ids"] for item in batch]  # Each is [max_length]
+    text_mask = [item["text_mask"] for item in batch]      # Each is [128]
+    labels = [item["label"] for item in batch]
+
+    # Determine the maximum length of asr_features in this batch
+    max_asr_len = max(feat.size(1) for feat in asr_features)
+
+    # Create a padded tensor for ASR features of shape [batch, max_asr_len]
+    padded_asr_features = torch.zeros(len(asr_features), max_asr_len)
+
+    for i, feat in enumerate(asr_features):
+        # feat is [1, length], remove the [1, ...] dimension
+        padded_asr_features[i, :feat.size(1)] = feat.squeeze(0)
+
+    # Stack text tensors
+    text_ids = torch.stack(text_ids, dim=0)
+    text_mask = torch.stack(text_mask, dim=0) # [batch, 128]
+    labels = torch.tensor(labels)
+
+    return {
+        "asr_features": padded_asr_features,  # [batch, max_length]
+        "text_ids": text_ids,
+        "text_mask": text_mask,
+        "label": labels,
+    }
+
+def create_dataloader(train_dataset, val_dataset, batch_size):
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
+    return train_loader, val_loader
+
 
 def main():
     # Paths to your fine-tuned models
     bert_path = "./emotion_bert_finetuned"
-    ser_path = "./ser_model_finetuned"
     label_mapping_path = "./emotion_bert_finetuned/label_mapping.json"
+    data = pd.read_csv("./MELD_train_sent_emo_final.csv")
 
     # Load label mapping to get number of emotions
     with open(label_mapping_path, 'r') as f:
         label_mapping = json.load(f)
     num_emotions = len(label_mapping['classes'])
 
+
+    train_dataset, val_dataset = load_data(
+        audio_df=data,
+        label_mapping_path=label_mapping_path,
+        bert_token_path=bert_path
+    )
+
+    batch_size = 2
+    train_loader, val_loader = create_dataloader(train_dataset, val_dataset, batch_size=batch_size)
+
+
     # Initialize model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = MultimodalEmotionClassifier(
         num_emotions=num_emotions,
-        bert_path=bert_path,
-        ser_path=ser_path
+        bert_path=bert_path
     ).to(device)
-
-    # Data loading
-    train_loader =
-    val_loader =
 
     # Train the model
     train_model(
         model=model,
         train_loader=train_loader,
         val_loader=val_loader,
-        num_epochs=5,
+        num_epochs=1,
         device=device
     )
 

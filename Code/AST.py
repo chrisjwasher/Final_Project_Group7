@@ -14,9 +14,6 @@ import torchaudio
 audio_dataframe = pd.read_csv('Crema_data.csv')
 
 def create_audio_dataset(audio_dataframe):
-    # Encode emotion labels
-    label_encoder = LabelEncoder()
-    #audio_dataframe['Emotion_Encoded'] = label_encoder.fit_transform(audio_dataframe['Emotions'])
 
     #label_mappings = dict(zip(label_encoder.classes_, range(len(label_encoder.classes_))))
     emotions = audio_dataframe['Emotions'].unique().tolist()
@@ -30,48 +27,45 @@ def create_audio_dataset(audio_dataframe):
         "labels": class_labels
     })
 
-
-
+    # map emotion labels to indices
     audio_dataframe['label_id'] = audio_dataframe['Emotions'].apply(lambda x: emotions.index(x))
     audio_dataframe = audio_dataframe.rename(columns={'Path': 'audio', 'label_id': 'labels'})
     audio_dataframe = audio_dataframe[['audio', 'labels']]
 
-
+    # Construct dataset
     dataset = Dataset.from_pandas(audio_dataframe, features=features)
-
 
     return dataset
 
+# Create dataset and split into train/test
 dataset = create_audio_dataset(audio_dataframe)
-dataset = dataset.train_test_split(test_size=0.2, shuffle=True, seed=0, stratify_by_column="labels")
+#dataset = dataset.train_test_split(test_size=0.2, shuffle=True, seed=0, stratify_by_column='labels')
 
 
-pretrained_model = "MIT/ast-finetuned-audioset-10-10-0.4593"
+# Load pretrained Audio Spectrogram Transformer & feature extractor
+pretrained_model = 'MIT/ast-finetuned-audioset-10-10-0.4593'
 feature_extractor = ASTFeatureExtractor.from_pretrained(pretrained_model)
-
-model_input_name = feature_extractor.model_input_names[0]  # key -> 'input_values'
+print(feature_extractor)
+# we set normalization to False in order to calculate the mean + std of the dataset
+feature_extractor.do_normalize = False
 SAMPLING_RATE = feature_extractor.sampling_rate
-
-feature_extractor.do_normalize = False  # we set normalization to False in order to calculate the mean + std of the dataset
+model_input_name = feature_extractor.model_input_names[0]
 mean = []
 std = []
 
+for sample in dataset:
+    audio_array = sample['audio']['array']
+    mean.append(audio_array.mean())
+    std.append(audio_array.std())
 
-for i, (audio_input, labels) in enumerate(dataset["train"]):
-    cur_mean = torch.mean(dataset["train"][i][audio_input])
-    cur_std = torch.std(dataset["train"][i][audio_input])
-    mean.append(cur_mean)
-    std.append(cur_std)
 feature_extractor.mean = np.mean(mean)
 feature_extractor.std = np.mean(std)
-feature_extractor.do_normalize = True
+feature_extractor.do_normalize = True # Enable normalization
 
 
 def preprocess_audio(batch):
-    wavs = [audio["array"] for audio in batch["input_values"]]
-    # inputs are spectrograms as torch.tensors now
-    inputs = feature_extractor(wavs, sampling_rate=SAMPLING_RATE, return_tensors="pt")
-
+    wavs = [input_values["array"] for input_values in batch["input_values"]]
+    inputs = feature_extractor(wavs, sampling_rate=SAMPLING_RATE, return_tensors='pt')
     output_batch = {model_input_name: inputs.get(model_input_name), "labels": list(batch["labels"])}
     return output_batch
 
@@ -84,28 +78,40 @@ def preprocess_audio_augment(batch):
         ClippingDistortion(min_percentile_threshold=0, max_percentile_threshold=30, p=0.5),
         TimeStretch(min_rate=0.8, max_rate=1.2),
         PitchShift(min_semitones=-4, max_semitones=4),
-    ], p=0.8, shuffle=True)
+    ],
+        p=0.8,
+        shuffle=True
+    )
 
-    wavs = [audio_augmentations(audio["array"], sample_rate=SAMPLING_RATE) for audio in batch["input_values"]]
-    inputs = feature_extractor(wavs, sampling_rate=SAMPLING_RATE, return_tensors="pt")
-
+    wavs = [audio_augmentations(input_values["array"], sample_rate=SAMPLING_RATE)
+            for input_values in batch["input_values"]]
+    inputs = feature_extractor(wavs, sampling_rate=feature_extractor.sampling_rate, return_tensors='pt')
     output_batch = {model_input_name: inputs.get(model_input_name), "labels": list(batch["labels"])}
+
     return output_batch
 
 # Apply the transformation to the dataset
 dataset = dataset.rename_column("audio", "input_values")
+dataset.set_transform(preprocess_audio, output_all_columns=False)
+dataset = dataset.train_test_split(test_size=0.2, shuffle=True, seed=0, stratify_by_column='labels')
+print(dataset["train"].column_names)
+print(dataset["train"][0])
 
+# with augmentations on the training set
+dataset["train"].set_transform(preprocess_audio_augment, output_all_columns=False)
 # w/o augmentations on the test set
 dataset["test"].set_transform(preprocess_audio, output_all_columns=False)
 
-
-
+# Model Configuration
+num_labels = len(dataset["train"].features["labels"].names)
+label2id = {name: i for i, name in enumerate(dataset["train"].features["labels"].names)}
+id2label = {i: name for name, i in label2id.items()}
 # Load configuration from the pretrained model
 config = ASTConfig.from_pretrained(pretrained_model)
-# Update configuration with the number of labels in our dataset
 config.num_labels = num_labels
 config.label2id = label2id
 config.id2label = {v: k for k, v in label2id.items()}
+
 # Initialize the model with the updated configuration
 model = ASTForAudioClassification.from_pretrained(pretrained_model, config=config, ignore_mismatched_sizes=True)
 model.init_weights()
@@ -114,7 +120,7 @@ model.init_weights()
 training_args = TrainingArguments(
     output_dir="./ast_classifier",
     learning_rate=5e-5,  # Learning rate
-    num_train_epochs=10,  # Number of epochs
+    num_train_epochs=25,  # Number of epochs
     per_device_train_batch_size=8,  # Batch size per device
     eval_strategy="epoch",  # Evaluation strategy
     save_strategy="epoch",
@@ -150,3 +156,6 @@ trainer = Trainer(
 )
 
 trainer.train()
+# Save the final model and feature extractor
+model.save_pretrained("./ast_classifier")
+feature_extractor.save_pretrained("./ast_classifier")
