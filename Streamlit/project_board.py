@@ -130,7 +130,7 @@ with st.sidebar:
     # data_viz_button = st.sidebar.button("Data Visualization",use_container_width=False,icon="🚨",on_click=callable,)
     # prediction_button = st.sidebar.button("Prediction",use_container_width=False,icon="🚨",on_click=callable,)
 
-    page = st.sidebar.radio('', ["📊EDA", "📈Model"])
+    page = st.sidebar.radio('', ["📊Model", "📈Demonstration"])
 
 
 paths = []
@@ -204,11 +204,11 @@ print(data)
 
 # ---------------------------------------EDA--------------------------------------------------------
 
-if page == '📊EDA':
-    st.markdown('Data')
+if page == '📊Model':
+    st.title('Data')
     st.dataframe(data,height=300)
 
-
+    st.title('EDA')
     c1, c2 = st.columns((1,1), gap='medium')
     with c1:
         st.markdown('Emotion Type Distribution')
@@ -284,6 +284,8 @@ if page == '📊EDA':
         emo_type_level_bar('neutral')
 
 
+
+
 #-----------------------------------------playing audio ----------------------------------
 
     st.markdown('Sound Display and Sound Waveform')
@@ -329,11 +331,13 @@ if page == '📊EDA':
         visualizing_audio('1001_DFA_NEU_XX.wav', 'Neutral')
         st.audio(audio_path6, format='audio/wav')
 
+    st.title('Model')
+
 
 
 # ------------------------------------------Prediction------------------------------------------
 
-elif page == '📈Model':
+elif page == '📈Demonstration':
 
     # %%
     import pandas as pd
@@ -371,7 +375,7 @@ elif page == '📈Model':
     model = CNNLSTMModel(input_size, hidden_size, num_layers, output_size)
     model.load_state_dict(torch.load("lstm_model.pth"))
     model.eval()
-    
+
 
 
     # Define MFCC extraction
