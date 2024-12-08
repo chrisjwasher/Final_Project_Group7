@@ -1,17 +1,13 @@
 import os
-from itertools import groupby
-from operator import concat
-from pickle import FALSE
-
 import streamlit as st
 import pandas as pd
+import numpy as np
 import altair as alt
 import plotly.express as px
 import matplotlib.pyplot as plt
-import json
+import torch.nn as nn
 import seaborn as sns
 import plotly.graph_objects as go
-import joblib
 from PIL import Image
 
 import IPython.display as ipd
@@ -25,7 +21,7 @@ import pygame
 import torch
 import os
 import seaborn as sns
-
+from sklearn.preprocessing import LabelEncoder
 from IPython.lib.display import Audio
 from pygments.lexer import bygroups
 
@@ -196,11 +192,12 @@ emotions_data_df = pd.DataFrame(emotions_data, columns=['Emotions'])
 file_df = pd.DataFrame(data_dir_list, columns=['Files'])
 level_df = pd.DataFrame(level_data, columns=['Emotion_Level'])
 data=pd.concat([emotions_data_df,level_df,file_df], axis=1)
+print(data)
 
 
 
 # =========================================================================================================
-#                                   Demostration
+#                                   EDA
 # =========================================================================================================
 # st.sidebar.title('Choose Sector')
 # page=st.sidebar.radio(['','Data Visualization', 'Prediction'])
@@ -334,15 +331,91 @@ if page == '📊EDA':
 
 
 
-# ------------------------------------------Model------------------------------------------
+# ------------------------------------------Prediction------------------------------------------
 
 elif page == '📈Model':
 
     # %%
     import pandas as pd
     import warnings
-    import joblib
-
-    #warnings.filterwarnings("ignore")
 
 
+    class CNNLSTMModel(nn.Module):
+        def __init__(self, input_size, hidden_size, num_layers, output_size, dropout_prob=0.5):
+            super(CNNLSTMModel, self).__init__()
+            self.conv1 = nn.Conv1d(in_channels=input_size, out_channels=64, kernel_size=3, padding=1)
+            self.conv2 = nn.Conv1d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
+            self.pool = nn.MaxPool1d(kernel_size=2, stride=2)
+            self.dropout = nn.Dropout(dropout_prob)
+            self.lstm = nn.LSTM(input_size=128, hidden_size=hidden_size, num_layers=num_layers,
+                                batch_first=True, bidirectional=True, dropout=dropout_prob)
+            self.fc = nn.Linear(hidden_size * 2, output_size)  # Bidirectional LSTM doubles the hidden size
+
+        def forward(self, x):
+            x = x.permute(0, 2, 1)  # Change shape to (batch_size, input_size, sequence_length)
+            x = self.pool(torch.relu(self.conv1(x)))
+            x = self.pool(torch.relu(self.conv2(x)))
+            x = x.permute(0, 2, 1)  # Change shape back to (batch_size, sequence_length, features)
+            out, _ = self.lstm(x)
+            out = self.dropout(out[:, -1, :])  # Take the last time step and apply dropout
+            out = self.fc(out)
+            return out
+
+
+    # Load the trained model
+    input_size = 1  # Adjust to match MFCC feature dimensions
+    hidden_size = 256
+    num_layers = 2
+    output_size = 6  # Adjust to match the number of classes in your dataset
+
+    model = CNNLSTMModel(input_size, hidden_size, num_layers, output_size)
+    model.load_state_dict(torch.load("lstm_model.pth"))
+    model.eval()
+    
+
+
+    # Define MFCC extraction
+    def extract_mfcc(filename):
+        try:
+            y, sr = librosa.load(filename, duration=3, offset=0.5)
+            mfcc = np.mean(librosa.feature.mfcc(y=y, sr=sr, n_mfcc=30).T, axis=0)
+            return mfcc
+        except Exception as e:
+            st.error(f"Error processing file: {e}")
+            return None
+
+
+    # Main app
+    st.title("Speech Emotion Recognition")
+    st.write("Upload an audio file to predict its emotional tone.")
+
+    uploaded_file = st.file_uploader("Choose an audio file (wav format preferred):", type=["wav", "mp3"])
+
+    # Simulate the LabelEncoder used during training
+    label_classes = ["sad", "angry", "disgust", "fear", "neutral",
+                     "unknown"]  # Replace with actual class names
+    label_encoder = LabelEncoder()
+    label_encoder.fit(label_classes)
+
+    if uploaded_file is not None:
+        with st.spinner("Processing..."):
+            # Save the uploaded file temporarily
+            with open("temp_audio_file.wav", "wb") as f:
+                f.write(uploaded_file.read())
+
+            # Extract features
+            features = extract_mfcc("temp_audio_file.wav")
+            if features is not None:
+                X_test = np.expand_dims(np.expand_dims(features, axis=-1), axis=0)
+                X_test = torch.tensor(X_test, dtype=torch.float32)
+
+                # Make prediction
+                with torch.no_grad():
+                    output = model(X_test)
+                    predicted = torch.argmax(output, dim=1)
+                    predicted_label = label_encoder.inverse_transform([predicted.item()])
+
+                st.audio("temp_audio_file.wav", format='audio/wav')
+                st.success(f"Predicted Emotion: {predicted_label[0]}")
+            else:
+                st.error("Could not extract features from the uploaded audio file.")
