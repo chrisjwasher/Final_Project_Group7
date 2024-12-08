@@ -577,31 +577,82 @@ def extract_mel_spectrogram(audio_path, n_mels=64, max_len=128):
 
 # -------------------------------------------------------------------------------------------------------------
 # Step 3: Train-Test Split and Feature Extraction
+
+# def prepare_data(dataframe):
+#     train_df, test_df = train_test_split(dataframe, test_size=0.2, stratify=dataframe['Emotions'], random_state=42)
+#
+#     X_train, y_train, X_test, y_test = [], [], [], []
+#
+#     label_map = {emotion: idx for idx, emotion in enumerate(dataframe['Emotions'].unique())}
+#
+#     for _, row in tqdm(train_df.iterrows(), total=len(train_df), desc="Processing Train Data"):
+#         mel_spec = extract_mel_spectrogram(row['Path'])
+#         if mel_spec is not None:
+#             X_train.append(mel_spec)
+#             y_train.append(label_map[row['Emotions']])
+#
+#     for _, row in tqdm(test_df.iterrows(), total=len(test_df), desc="Processing Test Data"):
+#         mel_spec = extract_mel_spectrogram(row['Path'])
+#         if mel_spec is not None:
+#             X_test.append(mel_spec)
+#             y_test.append(label_map[row['Emotions']])
+#
+#     X_train = np.array(X_train).reshape(-1, 64, 128, 1)
+#     X_test = np.array(X_test).reshape(-1, 64, 128, 1)
+#     y_train = to_categorical(y_train, num_classes=len(label_map))
+#     y_test = to_categorical(y_test, num_classes=len(label_map))
+#
+#     return X_train, X_test, y_train, y_test, label_map
+
+#Update: 12/08/2024
+
 def prepare_data(dataframe):
+    """
+    Prepares the data by extracting Mel spectrograms and splitting into train, validation, and test sets.
+    """
+    # Split into train and test sets
     train_df, test_df = train_test_split(dataframe, test_size=0.2, stratify=dataframe['Emotions'], random_state=42)
 
-    X_train, y_train, X_test, y_test = [], [], [], []
+    # Further split train data into training and validation sets
+    train_df, val_df = train_test_split(train_df, test_size=0.2, stratify=train_df['Emotions'], random_state=42)
+
+    X_train, y_train = [], []
+    X_val, y_val = [], []
+    X_test, y_test = [], []
 
     label_map = {emotion: idx for idx, emotion in enumerate(dataframe['Emotions'].unique())}
 
+    # Process training data
     for _, row in tqdm(train_df.iterrows(), total=len(train_df), desc="Processing Train Data"):
         mel_spec = extract_mel_spectrogram(row['Path'])
         if mel_spec is not None:
             X_train.append(mel_spec)
             y_train.append(label_map[row['Emotions']])
 
+    # Process validation data
+    for _, row in tqdm(val_df.iterrows(), total=len(val_df), desc="Processing Validation Data"):
+        mel_spec = extract_mel_spectrogram(row['Path'])
+        if mel_spec is not None:
+            X_val.append(mel_spec)
+            y_val.append(label_map[row['Emotions']])
+
+    # Process test data
     for _, row in tqdm(test_df.iterrows(), total=len(test_df), desc="Processing Test Data"):
         mel_spec = extract_mel_spectrogram(row['Path'])
         if mel_spec is not None:
             X_test.append(mel_spec)
             y_test.append(label_map[row['Emotions']])
 
+    # Convert to NumPy arrays and reshape
     X_train = np.array(X_train).reshape(-1, 64, 128, 1)
+    X_val = np.array(X_val).reshape(-1, 64, 128, 1)
     X_test = np.array(X_test).reshape(-1, 64, 128, 1)
     y_train = to_categorical(y_train, num_classes=len(label_map))
+    y_val = to_categorical(y_val, num_classes=len(label_map))
     y_test = to_categorical(y_test, num_classes=len(label_map))
 
-    return X_train, X_test, y_train, y_test, label_map
+    return X_train, X_val, X_test, y_train, y_val, y_test, label_map
+
 
 
 # -------------------------------------------------------------------------------------------------------------
@@ -629,6 +680,7 @@ def prepare_data(dataframe):
 #     model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 #     return model
 
+#Update: 12/07/2024
 def create_enhanced_cnn_model(input_shape, num_classes):
     model = Sequential([
         # First Convolutional Block
@@ -655,6 +707,11 @@ def create_enhanced_cnn_model(input_shape, num_classes):
         MaxPooling2D((2, 2)),
         #Dropout(0.4),
 
+        # Fifth Convolutional Block
+        Conv2D(256, (3, 3), activation='relu', padding='same'),
+        BatchNormalization(),
+        MaxPooling2D((2, 2)),
+
         # Flattening and Dense Layers
         Flatten(),
         Dense(512, activation='relu'),
@@ -673,18 +730,75 @@ def create_enhanced_cnn_model(input_shape, num_classes):
 # -------------------------------------------------------------------------------------------------------------
 # -------------------------------------------------------------------------------------------------------------
 # Step 5: Train the Enhanced Model
-def train_and_evaluate_model(X_train, X_test, y_train, y_test, input_shape, num_classes):
+
+# def train_and_evaluate_model(X_train, X_test, y_train, y_test, input_shape, num_classes):
+#     model = create_enhanced_cnn_model(input_shape, num_classes)
+#     model.summary()
+#
+#     # Train the model for more epochs (e.g., 30)
+#     history = model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=30, batch_size=16)
+#
+#     # Evaluate the model on the test set
+#     test_loss, test_accuracy = model.evaluate(X_test, y_test)
+#     print(f"Test Loss: {test_loss:.4f}, Test Accuracy: {test_accuracy:.4f}")
+#
+#     # ---------------------------- Visualizations ----------------------------
+#     # Accuracy and Loss plots
+#     plt.figure(figsize=(12, 6))
+#
+#     # Plot accuracy
+#     plt.subplot(1, 2, 1)
+#     plt.plot(history.history['accuracy'], label='Train Accuracy')
+#     plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+#     plt.xlabel('Epochs')
+#     plt.ylabel('Accuracy')
+#     plt.title('Model Accuracy')
+#     plt.legend()
+#
+#     # Plot loss
+#     plt.subplot(1, 2, 2)
+#     plt.plot(history.history['loss'], label='Train Loss')
+#     plt.plot(history.history['val_loss'], label='Validation Loss')
+#     plt.xlabel('Epochs')
+#     plt.ylabel('Loss')
+#     plt.title('Model Loss')
+#     plt.legend()
+#
+#     plt.tight_layout()
+#     plt.show()
+#
+#     # ---------------------------- Confusion Matrix ----------------------------
+#     y_pred = model.predict(X_test).argmax(axis=1)
+#     y_true = y_test.argmax(axis=1)
+#
+#     cm = confusion_matrix(y_true, y_pred)
+#     plt.figure(figsize=(10, 8))
+#     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=list(label_map.keys()),
+#                 yticklabels=list(label_map.keys()))
+#     plt.title('Confusion Matrix')
+#     plt.xlabel('Predicted')
+#     plt.ylabel('True')
+#     plt.show()
+#
+#     # ---------------------------- Classification Report ----------------------------
+#     print("\nClassification Report:\n")
+#     print(classification_report(y_true, y_pred, target_names=list(label_map.keys())))
+#
+#     return model
+#
+
+def train_and_evaluate_model(X_train, X_val, X_test, y_train, y_val, y_test, input_shape, num_classes):
     model = create_enhanced_cnn_model(input_shape, num_classes)
     model.summary()
 
-    # Train the model for more epochs (e.g., 30)
-    history = model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=30, batch_size=16)
+    # Train the model with validation data
+    history = model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=30, batch_size=16)
 
     # Evaluate the model on the test set
     test_loss, test_accuracy = model.evaluate(X_test, y_test)
     print(f"Test Loss: {test_loss:.4f}, Test Accuracy: {test_accuracy:.4f}")
 
-    # ---------------------------- Visualizations ----------------------------
+#---------------------------- Visualizations ----------------------------
     # Accuracy and Loss plots
     plt.figure(figsize=(12, 6))
 
@@ -722,18 +836,28 @@ def train_and_evaluate_model(X_train, X_test, y_train, y_test, input_shape, num_
     plt.ylabel('True')
     plt.show()
 
+    return model
+
     # ---------------------------- Classification Report ----------------------------
     print("\nClassification Report:\n")
     print(classification_report(y_true, y_pred, target_names=list(label_map.keys())))
 
-    return model
-
 
 # -------------------------------------------------------------------------------------------------------------
 # Entry point for the script
+
+# Update: 12/08/2024
+
+# if __name__ == "__main__":
+#     crema_df = generate_crema_data_csv()
+#     X_train, X_test, y_train, y_test, label_map = prepare_data(crema_df)
+#     input_shape = (64, 128, 1)
+#     num_classes = len(label_map)
+#     model = train_and_evaluate_model(X_train, X_test, y_train, y_test, input_shape, num_classes)
+
 if __name__ == "__main__":
     crema_df = generate_crema_data_csv()
-    X_train, X_test, y_train, y_test, label_map = prepare_data(crema_df)
+    X_train, X_val, X_test, y_train, y_val, y_test, label_map = prepare_data(crema_df)
     input_shape = (64, 128, 1)
     num_classes = len(label_map)
-    model = train_and_evaluate_model(X_train, X_test, y_train, y_test, input_shape, num_classes)
+    model = train_and_evaluate_model(X_train, X_val, X_test, y_train, y_val, y_test, input_shape, num_classes)
