@@ -100,9 +100,8 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # Load your data
-    # Example: dataset could be a CSV with 'text' and 'emotion' columns
-    df = pd.read_csv('MELD_dev_sent_emo.csv')
+    # Load data
+    df = pd.read_csv('MELD_train_sent_emo_final.csv')
     texts = df['Utterance'].tolist()
     labels = df['Emotion'].tolist()
 
@@ -157,7 +156,7 @@ def main():
     )
 
     # Training settings
-    num_epochs = 3
+    num_epochs = 10
     optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5)
     total_steps = len(train_loader) * num_epochs
     scheduler = torch.optim.lr_scheduler.LinearLR(

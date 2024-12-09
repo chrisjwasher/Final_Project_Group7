@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 import torch
 import evaluate
+import matplotlib.pyplot as plt
+
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 from datasets import Dataset, Audio, ClassLabel, Features
@@ -106,6 +108,7 @@ dataset["test"].set_transform(preprocess_audio, output_all_columns=False)
 num_labels = len(dataset["train"].features["labels"].names)
 label2id = {name: i for i, name in enumerate(dataset["train"].features["labels"].names)}
 id2label = {i: name for name, i in label2id.items()}
+
 # Load configuration from the pretrained model
 config = ASTConfig.from_pretrained(pretrained_model)
 config.num_labels = num_labels
@@ -121,7 +124,7 @@ training_args = TrainingArguments(
     output_dir="./ast_classifier",
     learning_rate=5e-5,  # Learning rate
     num_train_epochs=25,  # Number of epochs
-    per_device_train_batch_size=8,  # Batch size per device
+    per_device_train_batch_size=16,  # Batch size per device
     eval_strategy="epoch",  # Evaluation strategy
     save_strategy="epoch",
     eval_steps=1,
@@ -130,6 +133,7 @@ training_args = TrainingArguments(
     metric_for_best_model="accuracy",
     logging_strategy="steps",
     logging_steps=20,
+    save_total_limit=1
 )
 
 accuracy = evaluate.load("accuracy")
@@ -155,7 +159,27 @@ trainer = Trainer(
     compute_metrics=compute_metrics,  # Use the metrics function from above
 )
 
+
+
 trainer.train()
 # Save the final model and feature extractor
 model.save_pretrained("./ast_classifier")
 feature_extractor.save_pretrained("./ast_classifier")
+
+accuracy_values = []
+epoch_values = []
+for log_entry in trainer.state.log_history:
+    if 'eval_accuracy' in log_entry and 'epoch' in log_entry:
+        accuracy_values.append(log_entry['eval_accuracy'])
+        epoch_values.append(log_entry['epoch'])
+
+plt.figure(figsize=(8, 6))
+plt.plot(epoch_values, accuracy_values, marker='o', label='Validation Accuracy')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy')
+plt.title('Validation Accuracy Over Epochs')
+plt.grid(True)
+plt.legend()
+plt.savefig('accuracy_plot.png')
+plt.show()
+plt.savefig('ast_plot.png')

@@ -13,6 +13,30 @@ crema_directory_list = os.listdir(crema_dir)
 file_emotion = []
 file_path = []
 
+cremad_emotion_mapping = {
+    "NEU": "Neutral",
+    "ANG": "Anger",
+    "DIS": "Disgust",
+    "FEA": "Fear",
+    "HAP": "Happy/Joy",
+    "SAD": "Sad"
+}
+
+cremad_sentence_mapping = {
+    "IEO": "It's eleven o'clock",
+    "TIE": "That is exactly what happened",
+    "IOM": "I'm on my way to the meeting",
+    "IWW": "I wonder what this is about",
+    "TAI": "The airplane is almost full",
+    "MTI": "Maybe tomorrow it will be cold",
+    "IWL": "I would like a new alarm clock",
+    "ITH": "I think I have a doctor's appointment",
+    "DFA": "Don't forget a jacket",
+    "ITS": "I think I've seen this before",
+    "TSI": "The surface is slick",
+    "WSI": "We'll stop in a couple of minutes"
+}
+
 for file in crema_directory_list:
     #Store file paths
     file_path.append(crema_dir + file)
