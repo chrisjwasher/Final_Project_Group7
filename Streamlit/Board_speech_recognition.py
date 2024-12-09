@@ -342,10 +342,11 @@ if page == '📊Model':
 
     c1, c2 = st.columns((1, 1), gap='medium')
     with c1:
-        st.image("CNN_process.jpg", caption="Process")
-        #st.image("CNN_architecture.jpg", caption="Model Architecture")
+        st.image("CNN.jpg")
+        #st.image("CNN_architecture1.jpg", caption="Model Architecture")
     with c2:
-        st.image("CNN_accuracy.jpg", caption="Model Accuracy and Loss")
+        st.image("CNN_accuracy.jpg", caption="Model Accuracy", width=400)
+        st.image("CNN_loss.jpg", caption="Model Loss", width=400)
         st.image("CNN_classification.jpg", caption="Classification Results")
 
 
@@ -363,7 +364,7 @@ if page == '📊Model':
     st.subheader('Pre-trained Model')
     c1, c2 = st.columns((1, 1), gap='medium')
     with c1:
-        st.image("HUBERT_architecture.jpg", caption="Model Architecture")
+        st.image("HUBERT_architecture.jpg", caption="Model Architecture", width=450)
         #st.image("sunrise.jpg", caption="Sunrise by the mountains")
     with c2:
         st.image("HUBERT_accuracy.png", caption="Model Accuracy")
@@ -455,6 +456,8 @@ elif page == '📈Demonstration':
     classes = ["ANG", "DIS", "FEA", "HAP", "NEU", "SAD"]
     encoder = LabelEncoder()
     encoder.fit(classes)
+
+    
 
     st.title("Emotion Recognition from Speech")
     selected_file = st.selectbox("Select an audio file to process:", audio_file_paths)
