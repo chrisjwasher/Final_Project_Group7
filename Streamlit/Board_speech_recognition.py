@@ -24,6 +24,7 @@ import seaborn as sns
 from sklearn.preprocessing import LabelEncoder
 from IPython.lib.display import Audio
 from pygments.lexer import bygroups
+from transformers import Wav2Vec2Processor, Wav2Vec2Model
 
 
 if torch.cuda.is_available():
@@ -335,7 +336,7 @@ if page == '📊Model':
 
     st.title('Model')
     st.subheader('CNN Model')
-   
+
     #c1, c2 = st.columns((1, 1), gap='medium')
     #with c1:
     #    st.image("sunrise.jpg", caption="Sunrise by the mountains")
@@ -398,30 +399,40 @@ elif page == '📈Demonstration':
     import traceback
     import warnings
 
-    # Load the trained model
     model_path = "emotion_recognition_model.h5"
-    model = load_model(model_path)
-    print(f"Loaded model from {model_path}")
+    emotion_model = load_model(model_path)
+    print(f"Loaded trained model from {model_path}")
 
-    # Load the scaler and label encoder
-    #scaler_path = "scaler.joblib"
+    # Load the label encoder
     encoder_path = "label_encoder.joblib"
-    #scaler = joblib.load(scaler_path)
     encoder = joblib.load(encoder_path)
-    print("Loaded scaler and label encoder.")
+    print("Loaded label encoder.")
+
+    # Load Wav2Vec2 processor and model
+    processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base")
+    wav2vec_model = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base")
+
+    # Move the model to GPU if available
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    wav2vec_model.to(device)
 
 
-    # Function to extract features from an audio file
+    # Function to extract features
     def extract_features(file_path):
         try:
-            # Load the audio file
             audio_input, _ = librosa.load(file_path, sr=16000)
-            # Extract MFCCs (or replace with your feature extraction logic)
-            mfccs = librosa.feature.mfcc(y=audio_input, sr=16000, n_mfcc=30)
-            feature = np.mean(mfccs.T, axis=0)
+            if not isinstance(audio_input, np.ndarray):
+                audio_input = np.array(audio_input)
+            inputs = processor(audio_input, sampling_rate=16000, return_tensors="pt", padding=True)
+            inputs = {key: val.to(device) for key, val in inputs.items()}
+            with torch.no_grad():
+                outputs = wav2vec_model(**inputs)
+            # Mean of last hidden states
+            last_hidden_states = outputs.last_hidden_state
+            feature = last_hidden_states.mean(dim=1).cpu().numpy().flatten()
             return feature
         except Exception as e:
-            print(f"Error while extracting features from file: {file_path}")
+            print(f"Error encountered while processing file: {file_path}")
             traceback.print_exc()
             return None
 
@@ -431,10 +442,10 @@ elif page == '📈Demonstration':
         features = extract_features(file_path)
         if features is None:
             print("Failed to extract features. Please check the audio file.")
-            return
+            return None
 
-        # Predict without scaling
-        predictions = model.predict([features])
+        # Predict using the model
+        predictions = emotion_model.predict(np.array([features]))
         predicted_class = np.argmax(predictions, axis=1)
 
         # Decode the label
@@ -461,6 +472,6 @@ elif page == '📈Demonstration':
             if predicted_emotion:
                 st.audio(temp_file, format='audio/wav')
                 st.success(f"Predicted Emotion: {predicted_emotion}")
-            else:
-                st.error("Failed to predict emotion. Please try another file.")
+            #else:
+            #    st.error("Failed to predict emotion. Please try another file.")
 
