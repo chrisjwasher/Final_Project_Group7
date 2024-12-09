@@ -1,3 +1,4 @@
 Code file directory:
 
 crema_DF_gen-chris.py - This file is required to generate the excel file after downloading the CREMA dataset. It uses audio file names from the dataset and generates an excel that contains file path and emotion labels.
+MELD_data_gen-chris.py - This file is required to generate the excel file after downloading the MELD dataset. It updates excel file to align emotions with CREMA dataset.
