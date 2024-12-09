@@ -1,4 +1,8 @@
 Code file directory:
 
-crema_DF_gen-chris.py - This file is required to generate the excel file after downloading the CREMA dataset. It uses audio file names from the dataset and generates an excel that contains file path and emotion labels.
+crema_DF_gen-chris.py - This file is required to generate the excel file after downloading the CREMA dataset. It uses audio file names from the dataset and generates an excel that contains file path and emotion labels. This is required before running the AST.py and multimodal files. 
+MELD_wav_gen.py - This file converts downloaded MELD dataset from mp4 files to wav files. This is required before running MELD data gen.
 MELD_data_gen-chris.py - This file is required to generate the excel file after downloading the MELD dataset. It updates excel file to align emotions with CREMA dataset.
+AST.py - this is the file to fine-tune and evalute the AST model. It requires the CREMA data (or equivalently formatted dataset) before running.
+text_emotion_classification.py - this file fine-tunes a pretrained BERT model for text emotion classification. This requires the MELD dataset.
+multimodal_pretranscribe.py - This is the multimodal model finetuned to classify emotion from Audio. this requires the MELD dataset converted to Wav. 
