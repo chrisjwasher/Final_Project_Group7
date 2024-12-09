@@ -20,11 +20,14 @@ import librosa
 import pygame
 import torch
 import os
+import sys
 import seaborn as sns
 from sklearn.preprocessing import LabelEncoder
 from IPython.lib.display import Audio
 from pygments.lexer import bygroups
 from transformers import Wav2Vec2Processor, Wav2Vec2Model
+from transformers import Wav2Vec2FeatureExtractor, HubertModel
+from tensorflow.keras.models import load_model
 
 
 if torch.cuda.is_available():
@@ -337,52 +340,51 @@ if page == '📊Model':
     st.title('Model')
     st.subheader('CNN Model')
 
-    #c1, c2 = st.columns((1, 1), gap='medium')
-    #with c1:
-    #    st.image("sunrise.jpg", caption="Sunrise by the mountains")
-    #    st.image("sunrise.jpg", caption="Sunrise by the mountains")
-    #with c2:
-    #    st.image("sunrise.jpg", caption="Sunrise by the mountains")
-    #    st.image("sunrise.jpg", caption="Sunrise by the mountains")
+    c1, c2 = st.columns((1, 1), gap='medium')
+    with c1:
+        st.image("CNN_process.jpg", caption="Process")
+        #st.image("CNN_architecture.jpg", caption="Model Architecture")
+    with c2:
+        st.image("CNN_accuracy.jpg", caption="Model Accuracy and Loss")
+        st.image("CNN_classification.jpg", caption="Classification Results")
 
 
     st.subheader('CNNLSTM Model')
     c1, c2 = st.columns((1, 1), gap='medium')
     with c1:
-        st.image("model_process.jpg", caption="Process")
-        st.image("model_architecture.jpg", caption="Model Architecture",width=400)
-        width =700
-        height=700
+        st.image("CNNLSTM_process.jpg", caption="Process")
+        st.image("CNNLSTM_architecture.jpg", caption="Model Architecture",width=410)
+
     with c2:
-        st.image("CNNLSTM_accuracy.jpg", caption="Accuracy")
+        st.image("CNNLSTM_accuracy.jpg", caption="Model Accuracy")
         st.image("CNNLSTM_loss.jpg", caption="Loss")
 
 
     st.subheader('Pre-trained Model')
     c1, c2 = st.columns((1, 1), gap='medium')
-    #with c1:
-    #    st.image("sunrise.jpg", caption="Sunrise by the mountains")
-    #    st.image("sunrise.jpg", caption="Sunrise by the mountains")
-    #with c2:
-    #    st.image("sunrise.jpg", caption="Sunrise by the mountains")
-    #    st.image("sunrise.jpg", caption="Sunrise by the mountains")
-    #
+    with c1:
+        st.image("HUBERT_architecture.jpg", caption="Model Architecture")
+        #st.image("sunrise.jpg", caption="Sunrise by the mountains")
+    with c2:
+        st.image("HUBERT_accuracy.png", caption="Model Accuracy")
+        st.image("HUBERT_loss.png", caption="Model Loss")
+
     st.subheader('AST Model')
-    #c1, c2 = st.columns((1, 1), gap='medium')
-    #with c1:
+    c1, c2 = st.columns((1, 1), gap='medium')
+    with c1:
     #    st.image("sunrise.jpg", caption="Sunrise by the mountains")
-    #    st.image("sunrise.jpg", caption="Sunrise by the mountains")
-    #with c2:
-    #    st.image("sunrise.jpg", caption="Sunrise by the mountains")
+        st.image("AST_architecture.jpg", caption="Model Architecture")
+    with c2:
+        st.image("AST_accuracy.jpg", caption="Model Accuracy")
     #    st.image("sunrise.jpg", caption="Sunrise by the mountains")
         
     st.subheader('Multi Model')
-    #c1, c2 = st.columns((1, 1), gap='medium')
-    #with c1:
+    c1, c2 = st.columns((1, 1), gap='medium')
+    with c1:
+        st.image("Multi_architecture.jpg", caption="Model Architecture")
     #    st.image("sunrise.jpg", caption="Sunrise by the mountains")
-    #    st.image("sunrise.jpg", caption="Sunrise by the mountains")
-    #with c2:
-    #    st.image("sunrise.jpg", caption="Sunrise by the mountains")
+    with c2:
+        st.image("Multi_accuracy.jpg", caption="Model Accuracy")
     #    st.image("sunrise.jpg", caption="Sunrise by the mountains")
 
 
@@ -399,42 +401,114 @@ elif page == '📈Demonstration':
     import traceback
     import warnings
 
-    model_path = "emotion_recognition_model.h5"
-    emotion_model = load_model(model_path)
-    print(f"Loaded trained model from {model_path}")
+    # List of audio file paths to test
+    audio_file_paths = [
+        "C:/Users/feife/PycharmProjects/DL_Project/AudioTest/Highlights_debate_emotion_clip_1.mp3",
+        "C:/Users/feife/PycharmProjects/DL_Project/AudioTest/Highlights_debate_emotion_clip_2.mp3",
+        "C:/Users/feife/PycharmProjects/DL_Project/AudioTest/Highlights_debate_emotion_clip_3.mp3",
+        "C:/Users/feife/PycharmProjects/DL_Project/AudioTest/Highlights_debate_emotion_clip_4.mp3",
+        "C:/Users/feife/PycharmProjects/DL_Project/AudioTest/Highlights_debate_emotion_clip_5.mp3",
+        "C:/Users/feife/PycharmProjects/DL_Project/AudioTest/Highlights_debate_emotion_clip_6.mp3",
+        "C:/Users/feife/PycharmProjects/DL_Project/AudioTest/Highlights_debate_emotion_clip_7.mp3",
+        "C:/Users/feife/PycharmProjects/DL_Project/AudioTest/Highlights_debate_emotion_clip_8.mp3",
+        "C:/Users/feife/PycharmProjects/DL_Project/AudioTest/Highlights_debate_emotion_clip_9.mp3",
+        "C:/Users/feife/PycharmProjects/DL_Project/AudioTest/Highlights_debate_emotion_clip_10.mp3"]
 
-    # Load the label encoder
-    encoder_path = "label_encoder.joblib"
-    encoder = joblib.load(encoder_path)
-    print("Loaded label encoder.")
-
-    # Load Wav2Vec2 processor and model
-    processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base")
-    wav2vec_model = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base")
-
-    # Move the model to GPU if available
+    # Load HuBERT
+    feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained("facebook/hubert-large-ls960-ft")
+    hubert_model = HubertModel.from_pretrained("facebook/hubert-large-ls960-ft")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    wav2vec_model.to(device)
+    hubert_model.to(device)
 
 
-    # Function to extract features
     def extract_features(file_path):
         try:
+            # Load audio
             audio_input, _ = librosa.load(file_path, sr=16000)
             if not isinstance(audio_input, np.ndarray):
                 audio_input = np.array(audio_input)
-            inputs = processor(audio_input, sampling_rate=16000, return_tensors="pt", padding=True)
+
+            # Extract features using HuBERT
+            inputs = feature_extractor(audio_input, sampling_rate=16000, return_tensors="pt", padding=True)
             inputs = {key: val.to(device) for key, val in inputs.items()}
             with torch.no_grad():
-                outputs = wav2vec_model(**inputs)
-            # Mean of last hidden states
+                outputs = hubert_model(**inputs)
+            # Average last hidden states over time
             last_hidden_states = outputs.last_hidden_state
             feature = last_hidden_states.mean(dim=1).cpu().numpy().flatten()
             return feature
         except Exception as e:
-            print(f"Error encountered while processing file: {file_path}")
+            print(f"Error encountered while parsing file: {file_path}")
             traceback.print_exc()
             return None
+
+
+    # Load the pre-trained classification model
+    model_path = "emotion_recognition_using_Hubertmodel.h5"
+    if not os.path.exists(model_path):
+        print(f"Model file {model_path} not found. Make sure it's in the current directory.")
+        sys.exit(1)
+
+    keras_model = load_model(model_path)
+
+    # The classes should be the same as used during training
+    classes = ["ANG", "DIS", "FEA", "HAP", "NEU", "SAD"]
+    encoder = LabelEncoder()
+    encoder.fit(classes)
+
+    st.title("Emotion Recognition from Speech")
+    selected_file = st.selectbox("Select an audio file to process:", audio_file_paths)
+    st.audio(selected_file)
+    if st.button("Predict Emotion"):
+        st.spinner("Processing...")
+        #st.write(f"Processing file: {selected_file}")
+        test_feature = extract_features(selected_file)
+        if test_feature is None:
+            st.error(f"Failed to extract features for {selected_file}.")
+        else:
+            X_test = np.array([test_feature])
+            y_pred = keras_model.predict(X_test)
+            y_pred_class = np.argmax(y_pred, axis=1)
+            predicted_emotion = encoder.inverse_transform(y_pred_class)[0]
+            st.success(f"Predicted Emotion: {predicted_emotion}")
+
+
+#    model_path = "emotion_recognition_model.h5"
+#    emotion_model = load_model(model_path)
+#    print(f"Loaded trained model from {model_path}")
+
+    # Load the label encoder
+#    encoder_path = "label_encoder.joblib"
+#    encoder = joblib.load(encoder_path)
+#    print("Loaded label encoder.")
+
+    # Load Wav2Vec2 processor and model
+#    processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base")
+#    wav2vec_model = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base")
+
+    # Move the model to GPU if available
+#    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#    wav2vec_model.to(device)
+
+
+    # Function to extract features
+#    def extract_features(file_path):
+#        try:
+#            audio_input, _ = librosa.load(file_path, sr=16000)
+#            if not isinstance(audio_input, np.ndarray):
+#                audio_input = np.array(audio_input)
+#            inputs = processor(audio_input, sampling_rate=16000, return_tensors="pt", padding=True)
+#            inputs = {key: val.to(device) for key, val in inputs.items()}
+#            with torch.no_grad():
+#                outputs = wav2vec_model(**inputs)
+            # Mean of last hidden states
+#            last_hidden_states = outputs.last_hidden_state
+    #            feature = last_hidden_states.mean(dim=1).cpu().numpy().flatten()
+#            return feature
+#        except Exception as e:
+#            print(f"Error encountered while processing file: {file_path}")
+#            traceback.print_exc()
+#            return None
 
 
     # Function to predict emotion
@@ -445,7 +519,7 @@ elif page == '📈Demonstration':
             return None
 
         # Predict using the model
-        predictions = emotion_model.predict(np.array([features]))
+        predictions = keras_model.predict(np.array([features]))
         predicted_class = np.argmax(predictions, axis=1)
 
         # Decode the label
@@ -457,7 +531,7 @@ elif page == '📈Demonstration':
     st.title("Emotion Recognition from Speech")
     st.write("Upload an audio file to predict the emotion.")
 
-    uploaded_file = st.file_uploader("Choose an audio file", type=["wav"])
+    uploaded_file = st.file_uploader("Choose an audio file", type=["wav","mp3"])
 
     if uploaded_file is not None:
         with st.spinner("Processing..."):
@@ -474,4 +548,7 @@ elif page == '📈Demonstration':
                 st.success(f"Predicted Emotion: {predicted_emotion}")
             #else:
             #    st.error("Failed to predict emotion. Please try another file.")
+
+
+
 
