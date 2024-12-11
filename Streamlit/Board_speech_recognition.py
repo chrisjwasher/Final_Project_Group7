@@ -136,67 +136,84 @@ with st.sidebar:
 
     page = st.sidebar.radio('', ["📊Model", "📈Demonstration"])
 
-
 paths = []
 levels = []
 labels = []
+
+# Walk through directory and process files
 for dirname, _, filenames in os.walk(path):
     for filename in filenames:
+        # Full path
         paths.append(os.path.join(dirname, filename))
-        level = filename.split('_')[-1]
-        level = level.split('.')[0]
+
+        # Extract emotion level (last part before extension)
+        level = filename.split('_')[-1].split('.')[0]
         levels.append(level.lower())
+
+        # Extract label (second to last part)
         label = filename.split('_')[-2]
-        label = label.split('_')[-1]
         labels.append(label.lower())
+
+    # Optional: Limit number of files
     if len(paths) == 10000:
         break
-df = pd.DataFrame()
-df['speech'] = paths
-df['label']=labels
-df['level']=levels
+
+# Create DataFrame
+df = pd.DataFrame({
+    'speech': paths,
+    'label': labels,
+    'level': levels
+})
+
+
 print(df.head())
 print(df['speech'][0])
 
-
+# Extract emotions
 emotions_data = []
-
 for it in df['speech']:
-    # storing file emotions
     part = it.split('_')
-    if part[2] == 'SAD':
-        emotions_data.append('sad')
-    elif part[2] == 'ANG':
-        emotions_data.append('angry')
-    elif part[2] == 'DIS':
-        emotions_data.append('disgust')
-    elif part[2] == 'FEA':
-        emotions_data.append('fear')
-    elif part[2] == 'HAP':
-        emotions_data.append('happy')
-    elif part[2] == 'NEU':
-        emotions_data.append('neutral')
+    if len(part) > 2:
+        if part[2] == 'SAD':
+            emotions_data.append('sad')
+        elif part[2] == 'ANG':
+            emotions_data.append('angry')
+        elif part[2] == 'DIS':
+            emotions_data.append('disgust')
+        elif part[2] == 'FEA':
+            emotions_data.append('fear')
+        elif part[2] == 'HAP':
+            emotions_data.append('happy')
+        elif part[2] == 'NEU':
+            emotions_data.append('neutral')
+        else:
+            emotions_data.append('unknown')
     else:
-        emotions_data.append('Unknown')
+        emotions_data.append('unknown')
 
+# Extract emotion levels
 level_data = []
 for it in df['speech']:
-    # storing file emotions
-    part = it.split('.')[0].split('_')[3]
-    if part == 'HI':
-        level_data.append('High')
-    elif part == 'LO':
-        level_data.append('Low')
-    elif part == 'MD':
-        level_data.append('Medium')
+    part = it.split('.')[0].split('_')
+    if len(part) > 3:
+        if part[3] == 'HI':
+            level_data.append('High')
+        elif part[3] == 'LO':
+            level_data.append('Low')
+        elif part[3] == 'MD':
+            level_data.append('Medium')
+        else:
+            level_data.append('unspecified')
     else:
         level_data.append('unspecified')
 
-emotions_data_df = pd.DataFrame(emotions_data, columns=['Emotions'])
-file_df = pd.DataFrame(data_dir_list, columns=['Files'])
-level_df = pd.DataFrame(level_data, columns=['Emotion_Level'])
-data=pd.concat([emotions_data_df,level_df,file_df], axis=1)
-print(data)
+# Add extracted data to DataFrame
+df['Emotions'] = emotions_data
+df['Emotion_Level'] = level_data
+
+# Debugging: Check final DataFrame
+print(df.head())
+
 
 
 
@@ -210,15 +227,15 @@ print(data)
 
 if page == '📊Model':
     st.title('Data')
-    st.dataframe(data,height=300)
+    st.dataframe(df,height=300)
 
     st.title('EDA')
     c1, c2 = st.columns((1,1), gap='medium')
     with c1:
         st.markdown('Emotion Type Distribution')
-        colors = sns.color_palette("husl", len(data['Emotions'].value_counts().index))
+        colors = sns.color_palette("husl", len(df['Emotions'].value_counts().index))
         #plt.bar(data['Emotions'].value_counts().index, data['Emotions'].value_counts().values, color=colors)
-        fig = px.bar(data, x=data['Emotions'].value_counts().index, y=data['Emotions'].value_counts().values, color=data['Emotions'].value_counts().index)
+        fig = px.bar(df, x=df['Emotions'].value_counts().index, y=df['Emotions'].value_counts().values, color=df['Emotions'].value_counts().index)
         fig.update_layout(
             title_text='Emotion distribution',
             xaxis_title='Emotion type',
@@ -228,14 +245,14 @@ if page == '📊Model':
             height=350
         )
         st.plotly_chart(fig)
-        label1 = data['Emotions'].value_counts().index
-        level1 = data['Emotions'].value_counts().values
-        data1 = pd.DataFrame({'Emotions': label1, 'Count': level1})
-        st.dataframe(data1, use_container_width=True)
+        label1 = df['Emotions'].value_counts().index
+        level1 = df['Emotions'].value_counts().values
+        df1 = pd.DataFrame({'Emotions': label1, 'Count': level1})
+        st.dataframe(df1, use_container_width=True)
 
     with c2:
         st.markdown('Emotion Level Distribution')
-        fig = px.bar(data, x=data['Emotion_Level'].value_counts().index, y=data['Emotion_Level'].value_counts().values)
+        fig = px.bar(df, x=df['Emotion_Level'].value_counts().index, y=df['Emotion_Level'].value_counts().values)
         fig.update_layout(
             title_text='Emotion level distribution',
             xaxis_title='Emotion level',
@@ -245,14 +262,14 @@ if page == '📊Model':
             height=350
         )
         st.plotly_chart(fig)
-        label2=data['Emotion_Level'].value_counts().index
-        level2=data['Emotion_Level'].value_counts().values
-        data2=pd.DataFrame({'Emotion Level':label2,'Count':level2})
-        st.dataframe(data2, use_container_width=True)
+        label2=df['Emotion_Level'].value_counts().index
+        level2=df['Emotion_Level'].value_counts().values
+        df2=pd.DataFrame({'Emotion Level':label2,'Count':level2})
+        st.dataframe(df2, use_container_width=True)
 
 
     def emotions_count(emotions):
-        emo = data[data['Emotions'] == emotions]
+        emo = df[df['Emotions'] == emotions]
         counts = emo['Emotion_Level'].value_counts()
         return counts.reset_index().rename(columns={'index': 'emotion', 'Emotion_Level': f'{emotions}'})
 
@@ -404,6 +421,13 @@ elif page == '📈Demonstration':
 
     # List of audio file paths to test
     audio_file_paths = [
+        "C:/Users/feife/PycharmProjects/DL_Project/AudioWAV/1001_DFA_ANG_XX.wav",
+        "C:/Users/feife/PycharmProjects/DL_Project/AudioWAV/1091_TSI_SAD_XX.wav",
+        "C:/Users/feife/PycharmProjects/DL_Project/AudioWAV/1089_ITH_DIS_XX.wav",
+        "C:/Users/feife/PycharmProjects/DL_Project/AudioWAV/1001_IOM_ANG_XX.wav",
+        "C:/Users/feife/PycharmProjects/DL_Project/AudioWAV/1001_TIE_FEA_XX.wav",
+        "C:/Users/feife/PycharmProjects/DL_Project/AudioWAV/1002_IEO_ANG_HI.wav",
+        "C:/Users/feife/PycharmProjects/DL_Project/AudioWAV/1005_TSI_DIS_XX.wav",
         "C:/Users/feife/PycharmProjects/DL_Project/AudioTest/Highlights_debate_emotion_clip_1.mp3",
         "C:/Users/feife/PycharmProjects/DL_Project/AudioTest/Highlights_debate_emotion_clip_2.mp3",
         "C:/Users/feife/PycharmProjects/DL_Project/AudioTest/Highlights_debate_emotion_clip_3.mp3",
