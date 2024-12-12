@@ -49,7 +49,7 @@ data_dir_list = os.listdir(path)
 alt.themes.enable('dark')
 st.set_page_config(
     page_title="Campaign Speech Emotion Recognition",
-    page_icon=':derelict_house_building:',
+    page_icon=':smile:',
     layout="wide",
     initial_sidebar_state="expanded")
 
